@@ -19,7 +19,7 @@ class Dice {
 
 class DiceParser {
   static parse(input) {
-    if (input.length < 3) throw new Error('At least 3 dice required\nExample: node game.js 1,2,3 4,5,6 7,8,9');
+    if (input.length < 3) throw new Error('At least 3 dice required');
     
     const dice = input.map((str, i) => {
       if (!/^\d+(,\d+)*$/.test(str)) throw new Error(`Non-integer value in the dice configuration ${i+1}`);
@@ -35,7 +35,6 @@ class DiceParser {
       return new Dice(faces);
     });
 
-    // Check for duplicate dice configurations
     const uniqueNames = new Set(dice.map(d => d.name));
     if (uniqueNames.size !== dice.length) {
       throw new Error('Duplicate dice configurations found');
@@ -76,14 +75,20 @@ class FairRandomGenerator {
 class ProbabilityCalculator {
   static calculate(dice) {
     const matrix = {};
-    for (const a of dice) {
-      matrix[a.name] = {};
-      for (const b of dice) {
-        matrix[a.name][b.name] = a === b ? '-' : 
-          this.calculateProbability(a, b).toFixed(4);
-      }
-    }
-    return matrix;
+    const diceNames = dice.map(d => d.name);
+    
+    diceNames.forEach(name => {
+      matrix[name] = {};
+      diceNames.forEach(colName => {
+        matrix[name][colName] = (name === colName) ? '-' :
+          this.calculateProbability(
+            dice.find(d => d.name === name),
+            dice.find(d => d.name === colName)
+          ).toFixed(4);
+      });
+    });
+    
+    return { matrix, diceNames };
   }
 
   static calculateProbability(a, b) {
@@ -106,14 +111,24 @@ class Game {
   }
 
   async showHelp() {
-    const table = new Table();
-    const probabilities = ProbabilityCalculator.calculate(this.dice);
-    table.addRows(Object.entries(probabilities));
-    console.log('\nWin probability matrix (row dice vs column dice):');
+    const { matrix, diceNames } = ProbabilityCalculator.calculate(this.dice);
+    const table = new Table({
+      columns: [{ name: 'Dice', alignment: 'left' }, ...diceNames.map(name => ({ name }))]
+    });
+
+    diceNames.forEach(rowName => {
+      const rowData = { Dice: rowName };
+      diceNames.forEach(colName => {
+        rowData[colName] = matrix[rowName][colName];
+      });
+      table.addRow(rowData);
+    });
+
+    console.log('\n=== Probability Table ===');
     table.printTable();
     console.log('\nKey:');
-    console.log('- X vs Y: Probability X beats Y');
-    console.log('- "-" means same dice\n');
+    console.log('- Each cell shows probability of ROW dice beating COLUMN dice');
+    console.log('- "-" indicates identical dice comparison\n');
   }
 
   async prompt(options, context) {
@@ -232,22 +247,21 @@ class Game {
       console.log(`Your ${this.playerDie} rolled: ${playerRoll}`);
 
       if (playerRoll > computerRoll) {
-        console.log('\n🎉 You win!');
+        console.log('\n You win!');
       } else if (playerRoll < computerRoll) {
-        console.log('\n🤖 Computer wins!');
+        console.log('\n Computer wins!');
       } else {
-        console.log('\n🤝 It\'s a tie!');
+        console.log('\n It\'s a tie!');
       }
 
     } catch (error) {
-      console.error(`\n⚠️ Error: ${error.message}`);
+      console.error(`\n Error: ${error.message}`);
     } finally {
       this.rl.close();
     }
   }
 }
 
-// CLI Setup
 const rl = readline.createInterface({
   input: process.stdin,
   output: process.stdout
@@ -262,7 +276,7 @@ try {
   const dice = DiceParser.parse(diceArgs);
   new Game(dice, rl).run();
 } catch (error) {
-  console.error(`⛔ Error: ${error.message}`);
+  console.error(` Error: ${error.message}`);
   rl.close();
   process.exit(1);
 }
